@@ -1,11 +1,147 @@
 ---
-title: "PML"
+title: "Practical Machine Learning"
 author: "Dai Yichao (IVAN)"
 date: "6/28/2020"
 output: html_document
 ---
 
+***
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Introduction:
+
+A group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, our goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the activities of the human.
+
+Here is some [reference](https://www.coursera.org/learn/practical-machine-learning/supplement/PvInj/course-project-instructions-read-first) about this project. You can check it further understand what is the project is doing here.
+
+
+### Data download and reading:
+
+First, we need to download the dataset from the [Training Data Link](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv) and the [Testing Data Link]("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"). And then read the data into R.
+
+```{r}
+if(!file.exists(paste0(getwd(),"/pml-training.csv"))){
+        download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",
+                  destfile = "./Data/training.csv", method = "curl")}
+if(!file.exists(paste0(getwd(),"/pml-testing.csv"))){
+        download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",
+                  destfile = "./Data/test.csv",method = "curl")}
+trainingDat = read.csv("pml-training.csv")
+testingDat = read.csv("pml-testing.csv")
+```
+
+### Packages needs:
+
+```{r}
+library(ggplot2)
+library(caret)
+library(randomForest)
+library(gridExtra)
+```
+
+
+### Cleaning Data
+
+We can first remove the first variables, which does not have any predictor power.
+
+```{r}
+trainingDat = trainingDat[,-c(1:5)]
+```
+
+
+We observe that some of variable have alot of missig value. As a result, we should not use these variable as the predictor variables. These variables lost almost 100% values, it does not a good idea to use these variables as preditors.
+
+```{r}
+idex = (colSums(is.na(trainingDat))/19622)<0.2
+full_variable = names(trainingDat)[idex]
+trainingDatt = trainingDat[,full_variable]
+sum(colSums(is.na(trainingDatt)))
+```
+
+Also, there are some variables have lots of space and does not have any useful value. As a result, we should also remove these value too. Through the following fuction, we can observe that these variables almost are factor variables.We should first exclude the response variables.
+
+ALso, the number of window and new window are just some methods, we should also exclude them.
+
+```{r}
+str(trainingDatt)
+p = rep(1,88)
+for(i in 1:88){
+        p[i] = !is.factor(trainingDatt[,i])}
+p[1]=1
+p[88]=1
+p = (p==1)
+trainingDatt = trainingDatt[,p]
+trainingDatt = trainingDatt[,-c(1,2)]
+```
+
+### Data Exploratory anaysis
+
+now, we have cleaned up the trainig dataset, we should do some data analysis:
+
+```{r,fig.height=10,fig.width=10}
+table(trainingDatt$classe)
+x = ggplot(data = trainingDatt,aes(x =gyros_belt_x))+geom_density()+
+        labs(title=c("Gyros_belt_x in six differet Huma activites"))+facet_grid(.~classe)
+y = ggplot(data = trainingDatt,aes(x =gyros_belt_y))+geom_density()+
+        labs(title=c("Gyros_belt_y in six differet Huma activites"))+facet_grid(.~classe)
+z = ggplot(data = trainingDatt,aes(x =gyros_belt_y))+geom_density()+
+        labs(title=c("Gyros_belt_z in six differet Huma activites"))+facet_grid(.~classe)
+grid.arrange(x,y,z)
+```
+
+Here are part of the comparison about the Gyros_belt i 3 direction, which we can see the slightly different among these directions. 
+
+### Data Patition
+
+We will do the Data Patition for the **trainingDatt** data set, which 70% of the data will goes to the trainig set ad other data will goes to the testing set.
+
+```{r}
+inTrain = createDataPartition(trainingDatt$classe,p = 0.7,list = FALSE)
+Training = trainingDatt[inTrain,]
+Testing = trainingDatt[-inTrain,]
+```
+
+### Model Fittig
+
+In this case, we will directly use the accurate method **random forest**, and **Boostig** to fit the model:
+
+```{r,cache=TRUE}
+set.seed(125)
+controlRF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+controlGBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+modfitRF = train(classe ~ ., method = "rf", data = Training,trControl=controlRF)
+```
+
+
+```{r,cache=TRUE}
+modfitGBM <- train(classe~.,method="gbm",trControl = controlGBM,,data=Training,verbose = FALSE)
+```
+
+Now, we have fit the model, we need to check the accuracy of each model
+
+```{r}
+predRF <- predict(modfitRF, newdata=Testing[,-53])
+predGBM <- predict(modfitGBM, newdata=Testing[,-53])
+
+confusionMatrix(predRF, Testing$classe)
+confusionMatrix(predGBM, Testing$classe)
+
+```
+
+Compared the result, we can find the method **random forest** is better. As a result, we should this model as the final model to do the final test.
+
+### Using the model to predict:
+
+first, we should clean the test data set:
+
+```{r}
+gg = names(Training)
+gg = gg[1:52]
+testingDat = testingDat[,gg]
+pred <- predict(modfitRF, newdata=testingDat)
+data.frame(index = 1:20, predictios = pred)
 ```
 
